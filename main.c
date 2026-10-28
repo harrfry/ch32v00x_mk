@@ -5,15 +5,11 @@
 #include <stdbool.h>
 #include "keymap.h"
 
-typedef struct {
-	uint8_t packet[8];
-} usb_packet_t;
-
-typedef struct {
-    usb_packet_t key_packet[QUEUE_SIZE];
-    volatile uint8_t head;
-    volatile uint8_t tail;
-} usb_packet_queue_t;
+typedef enum {
+	REPORT_NONE,
+	REPORT_DIRTY,
+	REPORT_FLIGHT
+} usb_report_status_t;
 
 static uint8_t mouse_report[4] = { 0x00, 0x00, 0x00, 0x00 };
 static uint8_t keyboard_report[8] = {0x00};
@@ -238,9 +234,45 @@ void add_to_keyboard_report(uint8_t tap_keycode) {
 	}
 }
 
-void remove_from_hid_report(uint8_t tap_keybode) {
+void remove_from_hid_report(uint8_t tap_keycode) {
 	if(tap_keycode == 0) return;
-	for()
+	for(uint8_t i = 0; i < 6; i++) {
+		if(keyboard_report[i + 2] == tap_keycode) {
+			keyboard_report[i + 2] = 0;
+			break;
+		}
+	}
+}
+
+uint8_t get_mod_tap_mask(uint8_t mod_no) {
+	uint8_t mod_mask;
+	switch(mod_no) {
+		case MOD_LGUI:
+			mod_mask = LGUI;
+			break;
+		case MOD_LALT:
+			mod_mask = LALT;
+			break;
+		case MOD_LCTL:
+			mod_mask = LCTL;
+			break;
+		case MOD_LSFT:
+			mod_mask = LSFT;
+			break;
+		case MOD_RGUI:
+			mod_mask = RGUI;
+			break;
+		case MOD_RALT:
+			mod_mask = RALT;
+			break;
+		case MOD_RCTL:
+			mod_mask = RCTL;
+			break;
+		case MOD_RSFT:
+			mod_mask = RSFT;
+			break;
+	}
+	return mod_mask;
 }
 
 void process_keyboard_queue(void) {
@@ -252,14 +284,117 @@ void process_keyboard_queue(void) {
 	uint8_t action_type = (uint8_t)(oldest->keycode >> 12); 
 	uint8_t tap_keycode = (uint8_t)(oldest->keycode);
 	uint8_t action_info = (uint8_t)((oldest->keycode & 0x0F00) >> 8); // target layer or the modifier number
+	uint32_t timestamp = oldest->timestamp;
+	uint8_t row = oldest->matrix_row;
+	uint8_t col = oldest->matrix_col;
 
-	if(action_type = ACTION_NORMAL) {
+
+	if(action_type == ACTION_NORMAL) {
 		if(oldest->type == EVENT_PRESS) add_to_keyboard_report(tap_keycode);
 		else							remove_from_hid_report(tap_keycode);
 		queue_pop_oldest();
 		return;
 	}
 
+	if(action_type == ACTION_MODIFIER) {
+		if(oldest->type == EVENT_PRESS) {
+			keyboard_report[0] |= tap_keycode;
+		} else {
+			keyboard_report[0] &= ~(tap_keycode);
+		}
+		queue_pop_oldest();
+		return;
+	}
+
+	if(action_type == ACTION_LAYER_MO) {
+		if(oldest->type == EVENT_PRESS) {
+			layer_on(action_info);
+		} else {
+			layer_off(action_info);
+		}
+		queue_pop_oldest();
+		return;
+	}
+
+	if(action_type == ACTION_LAYER_TG) {
+		if(oldest->type == EVENT_PRESS) {
+			if(get_highest_active_layer() != action_info) {
+				layer_on(action_info);
+			} else {
+				layer_off(action_info);
+			}
+		}
+		queue_pop_oldest();
+		return;
+	}
+
+
+	if(action_type == ACTION_MOD_TAP) {
+		uint8_t mod_mask = get_mod_tap_mask(action_info);
+		if(oldest->type == EVENT_RELEASE) {
+			if(keyboard_report[0] & mod_mask) {
+				keyboard_report[0] &= ~mod_mask;
+				queue_pop_oldest();
+				return;
+			} else {
+				remove_from_hid_report(tap_keycode);
+				queue_pop_oldest();
+				return;
+			}
+		}
+		if(oldest->type == EVENT_PRESS) {
+			if(TimeElapsed32u(current_time, timestamp) >= Ticks_from_Ms(TAPPING_TERM)) { // if it's passed the tapping term then it's immediately realised as a hold (modifier)
+				keyboard_report[0] |= mod_mask;
+				queue_pop_oldest();
+				return;
+			}
+			if(queue_has_next()) {
+				uint8_t count = (queue.tail >= queue.head) ? (queue.tail - queue.head) : (QUEUE_SIZE - queue.head + queue.tail);
+				for(uint8_t i = 1; i < count; i++) {
+					uint8_t lookahead_idx = (queue.head + i) & QUEUE_MASK;
+					key_event_t *future_event = &queue.events[lookahead_idx];
+
+					uint8_t future_action_type = (uint8_t)(future_event->keycode >> 12); 
+					uint8_t future_tap_keycode = (uint8_t)(future_event->keycode);
+					uint8_t future_action_info = (uint8_t)((future_event->keycode & 0x0F00) >> 8); // target layer or the modifier number
+					uint32_t future_timestamp = future_event->timestamp;
+
+					// this is a single isolated fast tap
+					if((future_event->matrix_row == row) && (future_event->matrix_col == col)) {
+						if(future_event->type == EVENT_RELEASE) {
+							add_to_keyboard_report(tap_keycode);
+							queue_pop_oldest();
+							return;
+						}
+						continue;
+					}
+					
+					// then if the next pressed keys is also a mod tap, but not on the same one, then look ahead and see whether there is a release of both before the timer and then pop both
+					if((future_action_type == ACTION_MOD_TAP) && ((future_event->matrix_row != row) || (future_event->matrix_col != col))) {
+
+						for(uint8_t j = i; j < count; j++) {
+							uint8_t second_lookahead_idx = (queue.head + j) & QUEUE_MASK;
+							key_event_t *second_future_event = &queue.events[second_lookahead_idx];
+
+							uint8_t second_future_action_type = (uint8_t)(second_future_event->keycode >> 12); 
+							uint8_t second_future_tap_keycode = (uint8_t)(second_future_event->keycode);
+							uint8_t second_future_action_info = (uint8_t)((second_future_event->keycode & 0x0F00) >> 8); // target layer or the modifier number
+							uint32_t second_future_timestamp = second_future_event->timestamp; 
+
+							if((second_future_action_type == EVENT_RELEASE) && ((TimeElapsed32u(current_time, future_event->timestamp)) < Ticks_from_Ms(TAPPING_TERM))) {
+								add_to_keyboard_report(tap_keycode);
+								queue_pop_oldest();
+								return;
+							}
+						}
+					}
+					
+
+				}
+			}
+		}
+	}
+	return;
 }
 
 int main()
@@ -280,14 +415,18 @@ int main()
 		}
 #endif
 		uint32_t current_time = funSysTick32();		
-		bool matrix_changed = false;
-		if((current_time - previous) >= Ticks_from_Ms(1)) {
+		if(TimeElapsed32u(current_time, previous) >= Ticks_from_Ms(1)) {
+
+		
 			matrix_scan();
+			bool matrix_changed = false;
 			matrix_changed = matrix_debounce();
 			if(matrix_changed) {
 				process_matrix_changed();
 			}
+			process_keyboard_queue();
 			previous = current_time;
+			memcpy(oldest_keyboard_report, keyboard_report, sizeof(keyboard_report));
 		}
 		// if((current_time - previous) >= Ticks_from_Ms(1000)) {
 		// 	for(uint8_t r = 0; r < MATRIX_ROWS; r++) {
@@ -342,7 +481,7 @@ void usb_handle_user_in_request( struct usb_endpoint * e, uint8_t * scratchpad, 
 		// Keyboard (8 bytes)
 		__asm__ volatile ("nop; nop; nop; nop;");
 
-		usb_send_data( oldest->packet, 8, 0, sendtok );
+		usb_send_data( keyboard_report, 8, 0, sendtok );
 		
 		__asm__ volatile ("nop; nop; nop; nop; nop; nop; nop; nop; nop; nop; nop; nop; nop; nop; nop; nop;");
 		

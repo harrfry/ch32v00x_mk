@@ -6,7 +6,7 @@
 
 static const uint16_t keymap[][MATRIX_ROWS][MATRIX_COLS] = {
     [0] = {
-        {HID_KEY_0, HID_KEY_1},
+        {MT(MOD_LGUI, HID_KEY_A), HID_KEY_1},
         {HID_KEY_2, HID_KEY_3}
     }
 };
