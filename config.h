@@ -1,7 +1,7 @@
 #ifndef __CONFIG_H
 #define __CONFIG_H
 
-#define DEBOUNCE 5
+#define DEBOUNCE 10 // ideally 10 since polling is 10 and reporting gets choppy otherwise
 #define COL2ROW
 
 #define TAPPING_TERM 185

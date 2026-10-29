@@ -8,8 +8,8 @@
 static uint8_t mouse_report[4] = { 0x00, 0x00, 0x00, 0x00 };
 static uint8_t keyboard_report[8] = {0x00};
 
-const uint32_t row_pins[] = MATRIX_ROW_PINS;
-const uint32_t col_pins[] = MATRIX_COL_PINS;
+static const uint32_t row_pins[] = MATRIX_ROW_PINS;
+static const uint32_t col_pins[] = MATRIX_COL_PINS;
 
 static bool matrix_raw[MATRIX_ROWS][MATRIX_COLS] = {0};
 static bool matrix_debounced[MATRIX_ROWS][MATRIX_COLS] = {0};
@@ -17,7 +17,7 @@ static bool matrix_previous[MATRIX_ROWS][MATRIX_COLS] = {0};
 static uint32_t debounce_timers[MATRIX_ROWS][MATRIX_COLS] = {0};
 
 static uint16_t active_layers = 0;
-uint16_t active_keys[MATRIX_ROWS][MATRIX_COLS];
+static uint16_t active_keys[MATRIX_ROWS][MATRIX_COLS];
 static event_queue_t queue = {.head = 0, .tail = 0};
 
 
@@ -322,7 +322,7 @@ void process_keyboard_queue(void) {
 		return;
 	}
 
-
+	static uint32_t tap_hold_timers[MATRIX_ROWS][MATRIX_COLS] = {0};
 	if(action_type == ACTION_MOD_TAP) {
 		uint8_t mod_mask = get_mod_tap_mask(action_info);
 		if(oldest->type == EVENT_RELEASE) {
@@ -331,8 +331,12 @@ void process_keyboard_queue(void) {
 				queue_pop_oldest();
 				return;
 			} else {
-				remove_from_hid_report(tap_keycode);
-				queue_pop_oldest();
+				if(TimeElapsed32u(current_time, tap_hold_timers[row][col]) >= Ticks_from_Ms(10)) {
+					remove_from_hid_report(tap_keycode);
+					queue_pop_oldest();
+					tap_hold_timers[row][col] = 0;
+					return;
+				}
 				return;
 			}
 		}
@@ -356,6 +360,7 @@ void process_keyboard_queue(void) {
 					// this is a single isolated fast tap
 					if((future_event->matrix_row == row) && (future_event->matrix_col == col)) {
 						if(future_event->type == EVENT_RELEASE) {
+							tap_hold_timers[row][col] = current_time;
 							add_to_keyboard_report(tap_keycode);
 							queue_pop_oldest();
 							return;
