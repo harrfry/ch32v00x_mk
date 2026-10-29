@@ -6,9 +6,11 @@
 
 #define TAPPING_TERM 185
 
-#define MATRIX_ROWS 2
-#define MATRIX_COLS 2
-#define MATRIX_ROW_PINS {PC5, PC6}
-#define MATRIX_COL_PINS {PC7, PC0}
+#define CAPS_LOCK_LED PC4
+
+#define MATRIX_ROWS 5
+#define MATRIX_COLS 5
+#define MATRIX_ROW_PINS {PC5, PC6, PD1, PD2, PD3}
+#define MATRIX_COL_PINS {PC7, PC0, PD4, PD5, PD6}
 
 #endif

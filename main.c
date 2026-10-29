@@ -24,8 +24,9 @@ static event_queue_t queue = {.head = 0, .tail = 0};
 void init_gpio(void) {
 	
 	funGpioInitAll();
-	// funPinMode(PC4, GPIO_Speed_10MHz | GPIO_CNF_OUT_PP); // caps lock led
-
+	#ifdef CAPS_LOCK_LED
+	funPinMode(CAPS_LOCK_LED, GPIO_Speed_10MHz | GPIO_CNF_OUT_PP); // caps lock led
+	#endif
 
 	#ifdef COL2ROW
 	for(uint8_t r = 0; r < MATRIX_ROWS; r++) {
@@ -329,26 +330,33 @@ void process_keyboard_queue(void) {
 	}
 
 	static uint32_t tap_hold_timers[MATRIX_ROWS][MATRIX_COLS] = {0};
-	if(action_type == ACTION_MOD_TAP) {
-		uint8_t mod_mask = get_mod_tap_mask(action_info);
+	if(action_type == ACTION_MOD_TAP || ACTION_LAYER_TAP) {
+		uint8_t mod_mask = 0;
+		if(action_type == ACTION_MOD_TAP) mod_mask = get_mod_tap_mask(action_info);
 		if(oldest->type == EVENT_RELEASE) {
 			if(keyboard_report[0] & mod_mask) {
 				keyboard_report[0] &= ~mod_mask;
 				queue_pop_oldest();
 				return;
 			} else {
-				if(TimeElapsed32u(current_time, tap_hold_timers[row][col]) >= Ticks_from_Ms(8)) {
+				if(active_layers & (1 << action_info)) {
+					layer_off(action_info);
+					queue_pop_oldest();
+					return;
+				}
+			}
+			if(TimeElapsed32u(current_time, tap_hold_timers[row][col]) >= Ticks_from_Ms(8)) { // bodge the living daylights out of it so that the press event is not immediately eaten before the packet sends
 					remove_from_hid_report(tap_keycode);
 					queue_pop_oldest();
 					tap_hold_timers[row][col] = 0;
 					return;
 				}
 				return;
-			}
 		}
 		if(oldest->type == EVENT_PRESS) {
 			if(TimeElapsed32u(current_time, timestamp) >= Ticks_from_Ms(TAPPING_TERM)) { // if it's passed the tapping term then it's immediately realised as a hold (modifier)
-				keyboard_report[0] |= mod_mask;
+				if(action_type == ACTION_MOD_TAP) 	keyboard_report[0] |= mod_mask;
+				else								layer_on(action_info);
 				queue_pop_oldest();
 				return;
 			}
@@ -359,9 +367,9 @@ void process_keyboard_queue(void) {
 					key_event_t *future_event = &queue.events[lookahead_idx];
 
 					uint8_t future_action_type = (uint8_t)(future_event->keycode >> 12); 
-					uint8_t future_tap_keycode = (uint8_t)(future_event->keycode);
-					uint8_t future_action_info = (uint8_t)((future_event->keycode & 0x0F00) >> 8); // target layer or the modifier number
-					uint32_t future_timestamp = future_event->timestamp;
+					// uint8_t future_tap_keycode = (uint8_t)(future_event->keycode);
+					// uint8_t future_action_info = (uint8_t)((future_event->keycode & 0x0F00) >> 8); // target layer or the modifier number
+					// uint32_t future_timestamp = future_event->timestamp;
 
 					// this is a single isolated fast tap
 					if((future_event->matrix_row == row) && (future_event->matrix_col == col)) {
@@ -388,9 +396,9 @@ void process_keyboard_queue(void) {
 							key_event_t *second_future_event = &queue.events[second_lookahead_idx];
 
 							uint8_t second_future_action_type = (uint8_t)(second_future_event->keycode >> 12); 
-							uint8_t second_future_tap_keycode = (uint8_t)(second_future_event->keycode);
-							uint8_t second_future_action_info = (uint8_t)((second_future_event->keycode & 0x0F00) >> 8); // target layer or the modifier number
-							uint32_t second_future_timestamp = second_future_event->timestamp; 
+							// uint8_t second_future_tap_keycode = (uint8_t)(second_future_event->keycode);
+							// uint8_t second_future_action_info = (uint8_t)((second_future_event->keycode & 0x0F00) >> 8); // target layer or the modifier number
+							// uint32_t second_future_timestamp = second_future_event->timestamp; 
 
 							if((second_future_action_type == EVENT_RELEASE) && ((TimeElapsed32u(current_time, future_event->timestamp)) < Ticks_from_Ms(TAPPING_TERM))) {
 								add_to_keyboard_report(tap_keycode);
@@ -416,7 +424,6 @@ int main()
 	init_gpio();
 	usb_setup();
 	uint32_t previous = 0;
-	uint32_t previous_print_time = 0;
 	while(1)
 	{
 #if RV003USB_EVENT_DEBUGGING
@@ -439,16 +446,6 @@ int main()
 			process_keyboard_queue();
 			previous = current_time;
 		}
-		// if((current_time - previous) >= Ticks_from_Ms(1000)) {
-		// 	for(uint8_t r = 0; r < MATRIX_ROWS; r++) {
-		// 		printf("Row %d: ", r);
-		// 		for(uint8_t c = 0; c < MATRIX_COLS; c++) {
-		// 			printf("%d ", matrix_debounced[r][c]);
-		// 		}
-		// 		printf("\n\r");
-		// 	}
-		// 	previous = current_time;
-		// }
 	}
 }
 
@@ -460,15 +457,16 @@ void usb_handle_user_data( struct usb_endpoint * e, int current_endpoint, uint8_
 		LogUEvent(1139, data[0], 0, current_endpoint);
 	}
 	#endif
-
-	// if(current_endpoint == 0 && len > 0) {
-	// 	uint8_t kbd_leds = data[0];
-	// 	if(kbd_leds & 0x02) {
-	// 		funDigitalWrite(PC4, 1);
-	// 	} else {
-	// 		funDigitalWrite(PC4, 0);
-	// 	}
-	// }
+	#ifdef CAPS_LOCK_LED
+	if(current_endpoint == 0 && len > 0) {
+		uint8_t kbd_leds = data[0];
+		if(kbd_leds & 0x02) {
+			funDigitalWrite(PC4, 1);
+		} else {
+			funDigitalWrite(PC4, 0);
+		}
+	}
+	#endif
 }
 
 void usb_handle_user_in_request( struct usb_endpoint * e, uint8_t * scratchpad, int endp, uint32_t sendtok, struct rv003usb_internal * ist )
