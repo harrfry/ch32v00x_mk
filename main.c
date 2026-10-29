@@ -5,12 +5,6 @@
 #include <stdbool.h>
 #include "keymap.h"
 
-typedef enum {
-	REPORT_NONE,
-	REPORT_DIRTY,
-	REPORT_FLIGHT
-} usb_report_status_t;
-
 static uint8_t mouse_report[4] = { 0x00, 0x00, 0x00, 0x00 };
 static uint8_t keyboard_report[8] = {0x00};
 
@@ -368,6 +362,12 @@ void process_keyboard_queue(void) {
 						}
 						continue;
 					}
+
+					if((future_event->matrix_row != row || future_event->matrix_col != col) && (future_event->type != ACTION_MOD_TAP)) {
+						add_to_keyboard_report(tap_keycode);
+						queue_pop_oldest();
+						return;
+					} 
 					
 					// then if the next pressed keys is also a mod tap, but not on the same one, then look ahead and see whether there is a release of both before the timer and then pop both
 					if((future_action_type == ACTION_MOD_TAP) && ((future_event->matrix_row != row) || (future_event->matrix_col != col))) {
@@ -405,6 +405,7 @@ int main()
 	init_gpio();
 	usb_setup();
 	uint32_t previous = 0;
+	uint32_t previous_print_time = 0;
 	while(1)
 	{
 #if RV003USB_EVENT_DEBUGGING
@@ -426,7 +427,6 @@ int main()
 			}
 			process_keyboard_queue();
 			previous = current_time;
-			memcpy(oldest_keyboard_report, keyboard_report, sizeof(keyboard_report));
 		}
 		// if((current_time - previous) >= Ticks_from_Ms(1000)) {
 		// 	for(uint8_t r = 0; r < MATRIX_ROWS; r++) {
@@ -440,6 +440,7 @@ int main()
 		// }
 	}
 }
+
 
 void usb_handle_user_data( struct usb_endpoint * e, int current_endpoint, uint8_t * data, int len, struct rv003usb_internal * ist )
 {
@@ -467,6 +468,7 @@ void usb_handle_user_in_request( struct usb_endpoint * e, uint8_t * scratchpad, 
 			"nop\n\t"
 		);
 		
+		
 		// Move the mouse right, down, left and up in a square.
 		usb_send_data( mouse_report, 4, 0, sendtok );
 		__asm__ volatile (
@@ -481,7 +483,12 @@ void usb_handle_user_in_request( struct usb_endpoint * e, uint8_t * scratchpad, 
 		// Keyboard (8 bytes)
 		__asm__ volatile ("nop; nop; nop; nop;");
 
-		usb_send_data( keyboard_report, 8, 0, sendtok );
+		usb_send_data(keyboard_report, 8, 0, sendtok);
+		
+
+		
+
+		
 		
 		__asm__ volatile ("nop; nop; nop; nop; nop; nop; nop; nop; nop; nop; nop; nop; nop; nop; nop; nop;");
 		
