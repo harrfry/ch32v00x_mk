@@ -468,9 +468,9 @@ void usb_handle_user_data( struct usb_endpoint * e, int current_endpoint, uint8_
 	if(current_endpoint == 0 && len > 0) {
 		uint8_t kbd_leds = data[0];
 		if(kbd_leds & 0x02) {
-			funDigitalWrite(PC4, 1);
+			funDigitalWrite(CAPS_LOCK_LED, 1);
 		} else {
-			funDigitalWrite(PC4, 0);
+			funDigitalWrite(CAPS_LOCK_LED, 0);
 		}
 	}
 	#endif
