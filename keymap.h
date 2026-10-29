@@ -12,7 +12,7 @@
 
 static const uint16_t keymap[][MATRIX_ROWS][MATRIX_COLS] = {
     [0] = {
-        {KC_1, KC_2, KC_3, KC_4, KC_5},
+        {HRM_A, KC_2, KC_3, KC_4, KC_5},
         {KC_Q, KC_W, KC_F, KC_P, KC_B},
         {HRM_A, HRM_R, HRM_S, HRM_T, KC_G},
         {KC_Z, KC_X, KC_C, KC_D, KC_V},

@@ -111,6 +111,8 @@ bool matrix_debounce() {
 					matrix_did_change = true;
 				}
 
+			} else {
+				debounce_timers[r][c] = 0;
 			}
 		}
 
@@ -223,6 +225,7 @@ void process_matrix_changed(void) {
 }
 
 void add_to_keyboard_report(uint8_t tap_keycode) {
+	
 	if(tap_keycode == 0) return;
 	for(uint8_t i = 0; i < 6; i++) {
 		if(keyboard_report[i + 2] == tap_keycode) return;
@@ -416,6 +419,9 @@ void process_keyboard_queue(void) {
 	return;
 }
 
+volatile bool burst_active = false;
+volatile uint32_t usb_packet_timestamp = 0;
+
 int main()
 {
 	SystemInit();
@@ -423,7 +429,6 @@ int main()
 	
 	init_gpio();
 	usb_setup();
-	uint32_t previous = 0;
 	while(1)
 	{
 #if RV003USB_EVENT_DEBUGGING
@@ -434,7 +439,7 @@ int main()
 		}
 #endif
 		uint32_t current_time = funSysTick32();		
-		if(TimeElapsed32u(current_time, previous) >= Ticks_from_Ms(1)) {
+		if(burst_active) {
 
 		
 			matrix_scan();
@@ -444,7 +449,9 @@ int main()
 				process_matrix_changed();
 			}
 			process_keyboard_queue();
-			previous = current_time;
+		}
+		if(current_time >= (usb_packet_timestamp + (Ticks_from_Ms(1)))) { // fuck ass weird hack that gets it working for some reason
+			burst_active = false;
 		}
 	}
 }
@@ -499,7 +506,7 @@ void usb_handle_user_in_request( struct usb_endpoint * e, uint8_t * scratchpad, 
 
 		
 		
-		__asm__ volatile ("nop; nop; nop; nop; nop; nop; nop; nop; nop; nop; nop; nop; nop; nop; nop; nop;");
+		__asm__ volatile ("nop; nop; nop; nop; nop; nop; nop; nop; nop; nop; nop; nop; nop; nop;");
 		
 	}
 	else
@@ -507,6 +514,8 @@ void usb_handle_user_in_request( struct usb_endpoint * e, uint8_t * scratchpad, 
 		// If it's a control transfer, empty it.
 		usb_send_empty( sendtok );
 	}
+	burst_active = true;
+	usb_packet_timestamp = funSysTick32();
 }
 
 
