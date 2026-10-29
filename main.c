@@ -97,10 +97,16 @@ bool matrix_debounce() {
 	for(uint8_t r = 0; r < MATRIX_ROWS; r++) {
 
 		for(uint8_t c = 0; c < MATRIX_COLS; c++) {
+			uint32_t last_debounce_time = debounce_timers[r][c];
 			if(matrix_raw[r][c] != matrix_debounced[r][c]) {
-				if(TimeElapsed32u(current_time, debounce_timers[r][c]) >= Ticks_from_Ms(DEBOUNCE)) {
-					matrix_debounced[r][c] = matrix_raw[r][c];
+				
+				if(last_debounce_time == 0) {
 					debounce_timers[r][c] = current_time;
+				}
+
+				else if(TimeElapsed32u(current_time, last_debounce_time) >= Ticks_from_Ms(DEBOUNCE)) {
+					matrix_debounced[r][c] = matrix_raw[r][c];
+					debounce_timers[r][c] = 0;
 					matrix_did_change = true;
 				}
 
@@ -331,7 +337,7 @@ void process_keyboard_queue(void) {
 				queue_pop_oldest();
 				return;
 			} else {
-				if(TimeElapsed32u(current_time, tap_hold_timers[row][col]) >= Ticks_from_Ms(10)) {
+				if(TimeElapsed32u(current_time, tap_hold_timers[row][col]) >= Ticks_from_Ms(8)) {
 					remove_from_hid_report(tap_keycode);
 					queue_pop_oldest();
 					tap_hold_timers[row][col] = 0;
