@@ -10,7 +10,7 @@
 
 #define MATRIX_ROWS 5
 #define MATRIX_COLS 5
-#define MATRIX_ROW_PINS {PC5, PC6, PD1, PD2, PD3}
-#define MATRIX_COL_PINS {PC7, PC0, PD4, PD5, PD6}
+#define MATRIX_ROW_PINS {PC5, PC6, PD1, PD2, PC2}
+#define MATRIX_COL_PINS {PC7, PC0, PC1, PC3, PD7}
 
 #endif
