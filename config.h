@@ -5,6 +5,7 @@
 #define COL2ROW
 
 #define TAPPING_TERM 185
+#define COMBO_TERM
 
 #define CAPS_LOCK_LED PC4
 

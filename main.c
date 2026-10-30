@@ -279,6 +279,7 @@ uint8_t get_mod_tap_mask(uint8_t mod_no) {
 	return mod_mask;
 }
 
+
 void process_keyboard_queue(void) {
 	if(queue_is_empty()) return;
 	
@@ -298,6 +299,10 @@ void process_keyboard_queue(void) {
 		else							remove_from_hid_report(tap_keycode);
 		queue_pop_oldest();
 		return;
+	}
+
+	if(action_type == ACTION_MOUSE_KEY) {
+		
 	}
 
 	if(action_type == ACTION_MODIFIER) {
@@ -450,7 +455,7 @@ int main()
 			}
 			process_keyboard_queue();
 		}
-		if(current_time >= (usb_packet_timestamp + (Ticks_from_Ms(1)))) { // fuck ass weird hack that gets it working for some reason
+		if(current_time >= (usb_packet_timestamp + (Ticks_from_Ms(2)))) { // fuck ass weird hack that gets it working for some reason
 			burst_active = false;
 		}
 	}
@@ -500,12 +505,7 @@ void usb_handle_user_in_request( struct usb_endpoint * e, uint8_t * scratchpad, 
 		__asm__ volatile ("nop; nop; nop; nop;");
 
 		usb_send_data(keyboard_report, 8, 0, sendtok);
-		
 
-		
-
-		
-		
 		__asm__ volatile ("nop; nop; nop; nop; nop; nop; nop; nop; nop; nop; nop; nop; nop; nop;");
 		
 	}

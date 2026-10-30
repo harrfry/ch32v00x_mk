@@ -15,6 +15,7 @@
 #define LAYER_MO_MASK       (5U << 12)
 #define LAYER_TG_MASK       (6U << 12)
 #define TAP_MOD_MASK        (7U << 12)
+#define COMBO_END_MASK      (8U << 12)
 
 #define SAFE_RANGE          (15U << 12)
 
@@ -27,6 +28,7 @@
 #define ACTION_TAP_MOD      7U
 #define ACTION_USER         15U
 #define ACTION_NORMAL       0
+#define ACTION_COMBO_END    8U
 
 typedef struct{
     const uint16_t *keys;
