@@ -1,4 +1,5 @@
 #include "ch32fun.h"
+#include "ch32x00xhw.h"
 #include <stdio.h>
 #include <string.h>
 #include "rv003usb.h"
@@ -90,6 +91,92 @@ void matrix_scan() {
 		funDigitalWrite(row_pins[r], 0);
 	}
 	#endif
+}
+
+#ifndef USART1_CTLR1_FORMAT
+#define USART1_CTLR1_FORMAT (USART_Mode_Tx | USART_Mode_Rx)
+#endif
+
+#ifndef USART1_CTLR2_FORMAT
+#define USART1_CTLR2_FORMAT USART_StopBits_1
+#endif
+
+#ifndef USART2_CTLR1_FORMAT
+#define USART2_CTLR1_FORMAT (USART_Mode_Tx | USART_Mode_Rx)
+#endif
+
+#ifndef USART2_CTLR2_FORMAT
+#define USART2_CTLR2_FORMAT USART_StopBits_1
+#endif
+
+#define USART1_RM_SHIFT     6u
+#define USART2_RM_SHIFT     20u
+
+#ifndef USART1_RM_VALUE
+// This is user-configurable. Remap value 0 keeps USART1 on its default
+// routing, which for this example is TX on PD5 and RX on PD6.
+#define USART1_RM_VALUE     0u
+#endif
+
+static void usart_init(USART_TypeDef *usart, uint32_t baud, uint32_t ctlr1_format, uint32_t ctlr2_format)
+{
+	// Reset the control registers to a known state before programming the
+	// framing and baud rate.
+	usart->CTLR1 = 0;
+	usart->CTLR2 = ctlr2_format;
+	usart->CTLR3 = 0;
+	usart->BRR = (FUNCONF_SYSTEM_CORE_CLOCK + (baud / 2u)) / baud;
+
+	// The caller provides the frame format bits for this port. UE is added
+	// here so every configuration path still enables the peripheral.
+	usart->CTLR1 = ctlr1_format | USART_CTLR1_UE;
+}
+
+static void configure_dual_usart_remap(void)
+{
+	uint32_t pcfr1 = AFIO->PCFR1;
+
+	// Clear the existing USART remap fields first so the example can be
+	// retargeted by changing only USART1_RM_VALUE / USART2_RM_VALUE.
+	pcfr1 &= ~(AFIO_PCFR1_USART1_RM | AFIO_PCFR1_USART2_RM);
+#ifdef USE_USART1
+	pcfr1 |= (USART1_RM_VALUE << USART1_RM_SHIFT);
+#endif
+#ifdef USE_USART2
+	pcfr1 |= (USART2_RM_VALUE << USART2_RM_SHIFT);
+#endif
+	AFIO->PCFR1 = pcfr1;
+}
+
+static void usart_gpio_setup(void)
+{
+	// AFIO must be enabled before changing remap settings. GPIOD carries the
+	// default example UART pins for both serial ports.
+	RCC->APB2PCENR |= RCC_APB2Periph_AFIO | RCC_APB2Periph_GPIOD;
+	configure_dual_usart_remap();
+
+	// TX pins use alternate-function push-pull. RX pins are plain inputs.
+#ifdef USE_USART1
+	funPinMode(USART1_TX_PIN, GPIO_CFGLR_OUT_10Mhz_AF_PP);
+	funPinMode(USART1_RX_PIN, GPIO_CFGLR_IN_FLOAT);
+#endif
+#ifdef USE_USART2
+	funPinMode(USART2_TX_PIN, GPIO_CFGLR_OUT_10Mhz_AF_PP);
+	funPinMode(USART2_RX_PIN, GPIO_CFGLR_IN_FLOAT);
+#endif
+}
+
+static void usart_setup(void)
+{
+	// Enable only the UART clocks that are actually used by this build.
+#ifdef USE_USART1
+	RCC->APB2PCENR |= RCC_APB2Periph_USART1;
+	usart_init(USART1, USART1_BAUD, USART1_CTLR1_FORMAT, USART1_CTLR2_FORMAT);
+#endif
+#ifdef USE_USART2
+	RCC->APB2PCENR |= RCC_APB2Periph_USART2;
+	usart_init(USART2, USART2_BAUD, USART2_CTLR1_FORMAT, USART2_CTLR2_FORMAT);
+#endif
 }
 
 bool matrix_debounce() {
@@ -431,8 +518,9 @@ int main()
 {
 	SystemInit();
 	Delay_Ms(1); // Ensures USB re-enumeration after bootloader or reset; Spec demand >2.5µs ( TDDIS )
-	
 	init_gpio();
+	usart_gpio_setup();
+	usart_setup();
 	usb_setup();
 	while(1)
 	{
